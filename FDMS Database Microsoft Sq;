@@ -1,0 +1,160 @@
+------------------------------------------------------------
+-- FDMS DATABASE - COMPLETE CLEAN AND REBUILD SCRIPT
+-- Group 15 - Flight Data Management System
+------------------------------------------------------------
+
+------------------------------------------------------------
+-- 0. Create / Select database
+------------------------------------------------------------
+IF DB_ID('FDMS') IS NULL
+BEGIN
+    CREATE DATABASE FDMS;
+END;
+GO
+
+USE FDMS;
+GO
+
+------------------------------------------------------------
+-- 1. HARD RESET - DELETE ALL EXISTING DATA
+------------------------------------------------------------
+
+IF OBJECT_ID('dbo.Attitude_Parameters', 'U') IS NOT NULL
+    DELETE FROM dbo.Attitude_Parameters;
+
+IF OBJECT_ID('dbo.Telemetry_GForce', 'U') IS NOT NULL
+    DELETE FROM dbo.Telemetry_GForce;
+
+IF OBJECT_ID('dbo.Error_Packets', 'U') IS NOT NULL
+    DELETE FROM dbo.Error_Packets;
+
+IF OBJECT_ID('dbo.Aircraft', 'U') IS NOT NULL
+    DELETE FROM dbo.Aircraft;
+
+------------------------------------------------------------
+-- 2. DROP OLD TABLES IF THEY EXIST
+------------------------------------------------------------
+
+IF OBJECT_ID('dbo.Error_Packets', 'U') IS NOT NULL
+    DROP TABLE dbo.Error_Packets;
+GO
+
+IF OBJECT_ID('dbo.Attitude_Parameters', 'U') IS NOT NULL
+    DROP TABLE dbo.Attitude_Parameters;
+GO
+
+IF OBJECT_ID('dbo.Telemetry_GForce', 'U') IS NOT NULL
+    DROP TABLE dbo.Telemetry_GForce;
+GO
+
+IF OBJECT_ID('dbo.Aircraft', 'U') IS NOT NULL
+    DROP TABLE dbo.Aircraft;
+GO
+
+------------------------------------------------------------
+-- 3. CREATE TABLE: Aircraft
+------------------------------------------------------------
+CREATE TABLE dbo.Aircraft
+(
+    tail_number VARCHAR(20) NOT NULL PRIMARY KEY,
+    model       VARCHAR(50) NULL,
+    airline     VARCHAR(50) NULL
+);
+GO
+
+------------------------------------------------------------
+-- 4. CREATE TABLE: Telemetry_GForce
+------------------------------------------------------------
+CREATE TABLE dbo.Telemetry_GForce
+(
+    id              INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    tail_number     VARCHAR(20) NOT NULL,
+    packet_sequence INT NOT NULL,
+    timestamp_raw   NVARCHAR(64) NOT NULL,
+    accel_x         FLOAT NOT NULL,
+    accel_y         FLOAT NOT NULL,
+    accel_z         FLOAT NOT NULL,
+    weight          FLOAT NOT NULL,
+    altitude        FLOAT NOT NULL,
+    stored_at       DATETIME NOT NULL DEFAULT (GETDATE()),
+
+    CONSTRAINT FK_Telemetry_Aircraft
+        FOREIGN KEY (tail_number) REFERENCES dbo.Aircraft(tail_number),
+
+    CONSTRAINT UQ_Telemetry_Tail_Seq
+        UNIQUE (tail_number, packet_sequence)
+);
+GO
+
+------------------------------------------------------------
+-- 5. CREATE TABLE: Attitude_Parameters
+------------------------------------------------------------
+CREATE TABLE dbo.Attitude_Parameters
+(
+    id              INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    tail_number     VARCHAR(20) NOT NULL,
+    packet_sequence INT NOT NULL,
+    pitch           FLOAT NOT NULL,
+    bank            FLOAT NOT NULL,
+    stored_at       DATETIME NOT NULL DEFAULT (GETDATE()),
+
+    CONSTRAINT FK_Attitude_Aircraft
+        FOREIGN KEY (tail_number) REFERENCES dbo.Aircraft(tail_number),
+
+    CONSTRAINT FK_Attitude_Telemetry
+        FOREIGN KEY (tail_number, packet_sequence)
+        REFERENCES dbo.Telemetry_GForce(tail_number, packet_sequence)
+);
+GO
+
+------------------------------------------------------------
+-- 6. CREATE TABLE: Error_Packets
+------------------------------------------------------------
+CREATE TABLE dbo.Error_Packets
+(
+    id              INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    tail_number     VARCHAR(20) NULL,
+    packet_sequence INT NULL,
+    raw_packet      VARCHAR(MAX) NOT NULL,
+    checksum        INT NULL,
+    error_reason    VARCHAR(200) NULL,
+    stored_at       DATETIME NOT NULL DEFAULT (GETDATE()),
+
+    CONSTRAINT FK_Error_Aircraft
+        FOREIGN KEY (tail_number) REFERENCES dbo.Aircraft(tail_number)
+);
+GO
+
+------------------------------------------------------------
+-- 7. RESEED identity counters
+------------------------------------------------------------
+
+DBCC CHECKIDENT ('dbo.Telemetry_GForce', RESEED, 0);
+DBCC CHECKIDENT ('dbo.Attitude_Parameters', RESEED, 0);
+DBCC CHECKIDENT ('dbo.Error_Packets', RESEED, 0);
+GO
+
+------------------------------------------------------------
+-- 8. INDEXES FOR PERFORMANCE
+------------------------------------------------------------
+
+CREATE INDEX IX_Telemetry_GForce_Tail_StoredAt
+    ON dbo.Telemetry_GForce (tail_number, stored_at);
+
+CREATE INDEX IX_Attitude_Parameters_Tail_Seq
+    ON dbo.Attitude_Parameters (tail_number, packet_sequence);
+
+CREATE INDEX IX_Error_Packets_Tail_Seq
+    ON dbo.Error_Packets (tail_number, packet_sequence);
+GO
+
+------------------------------------------------------------
+-- 9. SEED REQUIRED AIRCRAFT
+------------------------------------------------------------
+INSERT INTO dbo.Aircraft (tail_number, model, airline)
+VALUES
+    ('C-FGAX', 'Simulated Trainer', 'FDMS Test Fleet'),
+    ('C-GEFC', 'Simulated Trainer', 'FDMS Test Fleet'),
+    ('C-QWWT', 'Simulated Trainer', 'FDMS Test Fleet');
+GO
+
